@@ -6,9 +6,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Arr;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as BaseCollection;
+use Pisochek\PivotPolymorph\Concerns\HasRelationships;
 
-class MorphsToMany extends MorphToMany
+class ReciprocalToMany extends MorphToMany
 {
+    use HasRelationships;
     /**
      * The type of the related polymorphic relation.
      *
@@ -24,7 +28,29 @@ class MorphsToMany extends MorphToMany
     protected $relatedMorphClass;
 
     /**
-     * Create a new morph to many relationship instance.
+     * The class name of the related name constraint.
+     *
+     * @var string
+     */
+    protected $relatedName;
+
+    /**
+     * The class name of the type constraint.
+     *
+     * @var string
+     */
+    protected $type;
+
+    /**
+     * The class name of the name constraint.
+     *
+     * @var string
+     */
+    protected $name;
+
+
+    /**
+     * Create a new reciprocal to many relationship instance.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @param \Illuminate\Database\Eloquent\Model $parent
@@ -54,6 +80,7 @@ class MorphsToMany extends MorphToMany
         $relatedKey
     ) {
         $this->relatedMorphType = $relatedType;
+
         $this->relatedMorphClass = $query->getModel()->getMorphClass();
 
         parent::__construct(
@@ -68,6 +95,13 @@ class MorphsToMany extends MorphToMany
             null,
             false
         );
+
+        $this->relatedName = $relatedName;
+
+        $this->type = $type;
+
+        $this->name = $name;
+
     }
 
     /**
@@ -80,6 +114,14 @@ class MorphsToMany extends MorphToMany
         $this->query->where($this->table . '.' . $this->relatedMorphType, $this->relatedMorphClass);
 
         return $this;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function shouldSelect($query = null)
+    {
+        return $this->pivotColumns;
     }
 
     /**
@@ -156,5 +198,84 @@ class MorphsToMany extends MorphToMany
     public function getOtherMorphClass()
     {
         return $this->relatedMorphClass;
+    }
+
+    /**
+     * Get the related model.
+     *
+     * @return string
+     */
+    public function getReciprocalClass()
+    {
+        return $this->parent->MorphsToMany($this->relatedMorphClass, $this->relatedName, $this->name, $this->table);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function get($columns = ['*'])
+    {
+        $columns = $this->query->getQuery()->columns ? [] : $columns;
+        $builder = $this->query->applyScopes();
+        $groupedResults = $builder->addSelect($this->shouldSelect($columns))
+        ->getQuery()
+        ->get()
+        ->groupBy($this->relatedMorphType);
+
+        $reciprocal = $this->getReciprocalClass();
+        $reciprocalBuilder = $reciprocal->query->applyScopes();
+        $reciprocalResults = $reciprocalBuilder->addSelect($this->shouldSelect($columns))
+        ->getQuery()
+        ->get()
+        ->groupBy($this->type);
+
+        $groupedResultModels = $this->getModels($groupedResults);
+        $relatedResultModels = $this->getModels($reciprocalResults, true);
+        $models = array_merge($groupedResultModels, $relatedResultModels);
+
+        $this->hydratePivotRelation($models);
+
+        if (count($models) > 0) {
+            $models = $builder->eagerLoadRelations($models);
+        }
+        return new Collection($models);
+    }
+
+    /**
+     * Get models.
+     *
+     * @return string
+     */
+    public function getModels($groupedResults , $related = null)
+    {
+        $models = [];
+
+        foreach ($groupedResults as $key => $results) {
+            /** @var Model $model */
+            $model = static::getMorphedModel($key);
+            /** @var \Illuminate\Database\Query\Builder $modelQuery */
+
+            $modelQuery = $model::whereIn($this->parentKey, $results->pluck($related ? $this->foreignPivotKey : $this->relatedPivotKey)); 
+                /** @var Collection $modelResults */
+                $modelResults = $modelQuery->get();
+
+            // Fill pivot table
+            foreach ($results as $result) {
+                /** @var Model $foundModel */
+                $foundModel = $modelResults->where($this->parentKey, $result->{$related ? $this->foreignPivotKey : $this->relatedPivotKey})->first();
+
+                if ($foundModel) {
+                    $foundModel->setAttribute('pivot_' . $related ? $this->relatedPivotKey : $this->foreignPivotKey, $result->{$related ? $this->relatedPivotKey : $this->foreignPivotKey});
+                    $foundModel->setAttribute('pivot_' . $this->morphType, $this->morphClass);
+                    $foundModel->setAttribute('pivot_' . $related ? $this->foreignPivotKey : $this->relatedPivotKey, $foundModel->getKey());
+                    $foundModel->setAttribute('pivot_' . $related ? $this->type : $this->relatedMorphType, $foundModel->getMorphClass());
+
+                    // Clone to avoid same relation objects
+                    array_push($models, clone $foundModel);
+                }
+            }
+        }
+
+        return $models;
     }
 }

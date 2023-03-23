@@ -64,14 +64,8 @@ class MorphToMany extends BelongsToMany
         $this->morphClass = $inverse ? $query->getModel()->getMorphClass() : $parent->getMorphClass();
 
         parent::__construct(
-            $query,
-            $parent,
-            $table,
-            $foreignPivotKey,
-            $relatedPivotKey,
-            $parentKey,
-            $relatedKey,
-            $relationName
+            $query, $parent, $table, $foreignPivotKey,
+            $relatedPivotKey, $parentKey, $relatedKey, $relationName
         );
     }
 
@@ -112,9 +106,7 @@ class MorphToMany extends BelongsToMany
     protected function baseAttachRecord($id, $timed)
     {
         return Arr::add(
-            parent::baseAttachRecord($id, $timed),
-            $this->morphType,
-            $this->morphClass
+            parent::baseAttachRecord($id, $timed), $this->morphType, $this->morphClass
         );
     }
 
@@ -129,8 +121,7 @@ class MorphToMany extends BelongsToMany
     public function getRelationExistenceQuery(Builder $query, Builder $parentQuery, $columns = ['*'])
     {
         return parent::getRelationExistenceQuery($query, $parentQuery, $columns)->where(
-            $this->table . '.' . $this->morphType,
-            $this->morphClass
+            $this->table . '.' . $this->morphType, $this->morphClass
         );
     }
 
@@ -139,7 +130,7 @@ class MorphToMany extends BelongsToMany
      *
      * @return \Illuminate\Database\Query\Builder
      */
-    public function newPivotQuery()
+    protected function newPivotQuery()
     {
         return parent::newPivotQuery()->where($this->morphType, $this->morphClass);
     }
@@ -159,8 +150,8 @@ class MorphToMany extends BelongsToMany
             : MorphPivot::fromAttributes($this->parent, $attributes, $this->table, $exists);
 
         $pivot->setPivotKeys($this->foreignPivotKey, $this->relatedPivotKey)
-            ->setMorphType($this->morphType)
-            ->setMorphClass($this->morphClass);
+              ->setMorphType($this->morphType)
+              ->setMorphClass($this->morphClass);
 
         return $pivot;
     }

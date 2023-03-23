@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\MorphPivot;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Query\Builder as BaseBuilder;
 use Illuminate\Support\Collection as BaseCollection;
-use Illuminate\Support\Facades\Log;
 
 class MorphsTo extends MorphToMany
 {
@@ -60,14 +59,7 @@ class MorphsTo extends MorphToMany
         $query = new Builder(new BaseBuilder($parent->getConnection()));
 
         parent::__construct(
-            $query,
-            $parent,
-            $name,
-            $table,
-            $foreignPivotKey,
-            $relatedPivotKey,
-            $parentKey,
-            $relatedKey
+            $query, $parent, $name, $table, $foreignPivotKey, $relatedPivotKey, $parentKey, $relatedKey
         );
 
         $this->related = new MorphPivot();
@@ -100,10 +92,10 @@ class MorphsTo extends MorphToMany
         $columns = $this->query->getQuery()->columns ? [] : $columns;
         $builder = $this->query->applyScopes();
         $groupedResults = $builder->addSelect($this->shouldSelect($columns))
-            ->getQuery()
-            ->from($this->table)
-            ->get()
-            ->groupBy($this->relatedMorphType);
+                                  ->getQuery()
+                                  ->from($this->table)
+                                  ->get()
+                                  ->groupBy($this->relatedMorphType);
 
         $models = [];
 
@@ -111,14 +103,12 @@ class MorphsTo extends MorphToMany
          * @var int $key
          * @var BaseCollection $results
          */
-        foreach ($groupedResults as $model => $results) {
+        foreach ($groupedResults as $key => $results) {
             /** @var Model $model */
+            $model = static::getMorphedModel($key);
 
             /** @var \Illuminate\Database\Query\Builder $modelQuery */
-            $modelQuery = $model::whereIn(
-                $this->parentKey,
-                $results->pluck($this->relatedPivotKey)
-            );
+            $modelQuery = $model::whereIn($this->parentKey, $results->pluck($this->relatedPivotKey));
 
             if (in_array(SoftDeletes::class, class_uses($model)) && $this->withTrashed === true) {
                 $modelQuery->withTrashed();
@@ -210,10 +200,8 @@ class MorphsTo extends MorphToMany
 
                 // If this record exists - update it, go out of the loop and mark it as not new
                 if ($item->{$this->relatedPivotKey} === $id && $item->{$this->relatedMorphType} === $class) {
-                    if (
-                        count($attributes) > 0 &&
-                        $this->updateExistingMorphPivot($id, $class, $attributes)
-                    ) {
+                    if (count($attributes) > 0 &&
+                        $this->updateExistingMorphPivot($id, $class, $attributes)) {
                         $changes['updated'][] = [$id, $class];
                     }
 
@@ -258,9 +246,9 @@ class MorphsTo extends MorphToMany
         }
 
         $updated = $this->newPivotQuery()
-            ->where($this->relatedPivotKey, $id)
-            ->where($this->relatedMorphType, $class)
-            ->update($this->castAttributes($attributes));
+                        ->where($this->relatedPivotKey, $id)
+                        ->where($this->relatedMorphType, $class)
+                        ->update($this->castAttributes($attributes));
 
         return $updated;
     }
@@ -336,8 +324,8 @@ class MorphsTo extends MorphToMany
             foreach ($ids as $item) {
                 list($id, $class) = $item;
                 $results[] = $query->where($this->relatedMorphType, $class)
-                    ->where($this->relatedPivotKey, $id)
-                    ->delete();
+                                   ->where($this->relatedPivotKey, $id)
+                                   ->delete();
             }
         } else {
             $results[] = $query->delete();
@@ -370,8 +358,7 @@ class MorphsTo extends MorphToMany
         foreach ($models as $model) {
             if (isset($dictionary[$key = $model->{$this->parentKey}])) {
                 $model->setRelation(
-                    $relation,
-                    new Collection($dictionary[$key])
+                    $relation, new Collection($dictionary[$key])
                 );
             }
         }
