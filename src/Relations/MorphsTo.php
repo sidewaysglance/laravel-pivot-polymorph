@@ -105,7 +105,7 @@ class MorphsTo extends MorphToMany
          */
         foreach ($groupedResults as $key => $results) {
             /** @var Model $model */
-            $model = static::getMorphedModel($key);
+            $model = static::getMorphedModel($key) ?? $key;
 
             /** @var \Illuminate\Database\Query\Builder $modelQuery */
             $modelQuery = $model::whereIn($this->parentKey, $results->pluck($this->relatedPivotKey));
